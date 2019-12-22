@@ -1,0 +1,9 @@
+[package]
+name = "advent-of-code-2019"
+version = "0.1.0"
+authors = ["Andreas Neuhaus <zargony@zargony.com>"]
+description = "Solutions to the Advent of Code 2019 puzzles"
+edition = "2018"
+
+[dependencies]
+async-std = { version = "1.4", features = ["attributes"] }
