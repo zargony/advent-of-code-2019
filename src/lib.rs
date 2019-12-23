@@ -53,4 +53,33 @@ impl Input {
             )
         })
     }
+
+    /// Stream of comma separated values
+    pub fn csv_lines(self) -> impl Stream<Item = io::Result<Vec<String>>> {
+        self.lines().map_ok(|line| {
+            line.split(',')
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+        })
+    }
+
+    /// Stream of parsed comma separated values
+    pub fn parsed_csv_lines<T>(self) -> impl Stream<Item = io::Result<Vec<T>>>
+    where
+        T: FromStr,
+        T::Err: error::Error + Send + Sync + 'static,
+    {
+        self.csv_lines().and_then(|values| {
+            ready(
+                values
+                    .iter()
+                    .map(|value| {
+                        value
+                            .parse()
+                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+                    })
+                    .collect(),
+            )
+        })
+    }
 }
