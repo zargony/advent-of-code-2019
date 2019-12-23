@@ -1,5 +1,6 @@
 use advent_of_code_2019::Input;
 use async_std::io;
+use futures_util::stream::TryStreamExt;
 
 fn fuel_for_mass(mass: u32) -> u32 {
     match mass / 3 {
@@ -17,16 +18,16 @@ fn fuel_for_mass_including_fuel(mass: u32) -> u32 {
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
-    let mut input = Input::day(1).await?;
+    let mut input = Input::day(1).await?.parsed_lines();
     let mut total_fuel = 0;
-    while let Some(mass) = input.parse_next_line::<u32>().await? {
+    while let Some(mass) = input.try_next().await? {
         total_fuel += fuel_for_mass(mass);
     }
     println!("Sum of fuel requirements: {}", total_fuel);
 
-    input.reset().await?;
-    total_fuel = 0;
-    while let Some(mass) = input.parse_next_line::<u32>().await? {
+    let mut input = Input::day(1).await?.parsed_lines();
+    let mut total_fuel = 0;
+    while let Some(mass) = input.try_next().await? {
         total_fuel += fuel_for_mass_including_fuel(mass);
     }
     println!("Sum of fuel requirements including fuel: {}", total_fuel);
