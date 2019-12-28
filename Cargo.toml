@@ -7,4 +7,5 @@ edition = "2018"
 
 [dependencies]
 async-std = { version = "1.4", features = ["attributes"] }
+err-derive = "0.2"
 futures-util = "0.3"
