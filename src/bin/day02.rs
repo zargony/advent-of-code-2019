@@ -1,23 +1,18 @@
-use advent_of_code_2019::intcode::Vm;
-use advent_of_code_2019::Input;
+use advent_of_code_2019::intcode::{Memory, Vm};
 use async_std::io;
-use futures_util::stream::TryStreamExt;
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
-    let program = Input::day(2)
-        .await?
-        .parsed_csv_lines::<u32>()
-        .try_concat()
-        .await?;
-
-    let mut vm = Vm::new(&program);
+    let mut memory = Memory::from_day(2).await?;
+    let mut vm = Vm::new(&mut memory);
     vm.noun(12).verb(2).run();
     println!("Result: {}", vm.result());
 
+    let memory = Memory::from_day(2).await?;
     'out: for noun in 0..=99 {
         for verb in 0..=99 {
-            let mut vm = Vm::new(&program);
+            let mut memory = memory.clone();
+            let mut vm = Vm::new(&mut memory);
             vm.noun(noun).verb(verb).run();
             if vm.result() == 19690720 {
                 println!(
@@ -40,20 +35,24 @@ mod tests {
 
     #[test]
     fn part_1() {
-        let mut vm = Vm::new(&[1, 0, 0, 0, 99]);
+        let mut memory = Memory::from(vec![1, 0, 0, 0, 99]);
+        let mut vm = Vm::new(&mut memory);
         vm.run();
-        assert_eq!(vm.dump(), &[2, 0, 0, 0, 99]);
+        assert_eq!(vm.memory(), &[2, 0, 0, 0, 99]);
 
-        let mut vm = Vm::new(&[2, 3, 0, 3, 99]);
+        let mut memory = Memory::from(vec![2, 3, 0, 3, 99]);
+        let mut vm = Vm::new(&mut memory);
         vm.run();
-        assert_eq!(vm.dump(), &[2, 3, 0, 6, 99]);
+        assert_eq!(vm.memory(), &[2, 3, 0, 6, 99]);
 
-        let mut vm = Vm::new(&[2, 4, 4, 5, 99, 0]);
+        let mut memory = Memory::from(vec![2, 4, 4, 5, 99, 0]);
+        let mut vm = Vm::new(&mut memory);
         vm.run();
-        assert_eq!(vm.dump(), &[2, 4, 4, 5, 99, 9801]);
+        assert_eq!(vm.memory(), &[2, 4, 4, 5, 99, 9801]);
 
-        let mut vm = Vm::new(&[1, 1, 1, 4, 99, 5, 6, 0, 99]);
+        let mut memory = Memory::from(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]);
+        let mut vm = Vm::new(&mut memory);
         vm.run();
-        assert_eq!(vm.dump(), &[30, 1, 1, 4, 2, 5, 6, 0, 99]);
+        assert_eq!(vm.memory(), &[30, 1, 1, 4, 2, 5, 6, 0, 99]);
     }
 }
