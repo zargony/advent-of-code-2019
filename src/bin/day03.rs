@@ -57,6 +57,22 @@ impl Line {
         max(self.start.y, self.end.y)
     }
 
+    /// Length of the line (parallel to x/y axis only for now)
+    fn len(&self) -> i32 {
+        self.distance_to(self.end).unwrap()
+    }
+
+    /// Distance from start of line to point on line (parallel to x/y axis only)
+    fn distance_to(&self, p: Point) -> Option<i32> {
+        if self.start.x == self.end.x && p.x == self.start.x {
+            Some((p.y - self.start.y).abs())
+        } else if self.start.y == self.end.y && p.y == self.start.y {
+            Some((p.x - self.start.x).abs())
+        } else {
+            None
+        }
+    }
+
     /// Intersection point with some other line (parallel to x/y axis and perpendicular only for now)
     fn intersection(&self, other: Line) -> Option<Point> {
         if self.start.x == self.end.x && other.start.y == other.end.y // self vertical, other horizontal
@@ -121,6 +137,18 @@ impl Path {
         self.positions.windows(2).map(|p| Line::new(p[0], p[1]))
     }
 
+    /// Distance to point on path
+    fn distance_to(&self, p: Point) -> Option<i32> {
+        let mut dist = 0;
+        for line in self.lines() {
+            match line.distance_to(p) {
+                Some(d) => return Some(dist + d),
+                None => dist += line.len(),
+            }
+        }
+        None
+    }
+
     /// Calculate list of intersection points between two paths
     fn intersections(&self, other: &Self) -> Vec<Point> {
         let mut res = Vec::new();
@@ -137,10 +165,24 @@ impl Path {
     }
 
     /// Calculate point of closest intersection
-    fn closest_intersection(&self, other: &Self) -> Option<Point> {
+    fn closest_intersection(&self, other: &Self) -> Option<(Point, i32)> {
         self.intersections(other)
             .into_iter()
-            .min_by_key(|p| p.distance())
+            .map(|p| (p, p.distance()))
+            .min_by_key(|(_p, d)| *d)
+    }
+
+    /// Calculate point of shortest intersection
+    fn shortest_intersection(&self, other: &Self) -> Option<(Point, i32)> {
+        self.intersections(other)
+            .into_iter()
+            .map(|p| {
+                (
+                    p,
+                    self.distance_to(p).unwrap() + other.distance_to(p).unwrap(),
+                )
+            })
+            .min_by_key(|(_p, d)| *d)
     }
 }
 
@@ -151,7 +193,12 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let wire2 = lines.try_next().await?.unwrap().parse::<Path>()?;
     println!(
         "Closest intersection distance: {}",
-        wire1.closest_intersection(&wire2).unwrap().distance(),
+        wire1.closest_intersection(&wire2).unwrap().1,
+    );
+
+    println!(
+        "Shortest intersection distance: {}",
+        wire1.shortest_intersection(&wire2).unwrap().1,
     );
 
     Ok(())
@@ -165,16 +212,33 @@ mod tests {
     fn part_1() {
         let wire1: Path = "R8,U5,L5,D3".parse().unwrap();
         let wire2: Path = "U7,R6,D4,L4".parse().unwrap();
-        assert_eq!(wire1.closest_intersection(&wire2).unwrap().distance(), 6);
+        assert_eq!(wire1.closest_intersection(&wire2).unwrap().1, 6);
 
         let wire1: Path = "R75,D30,R83,U83,L12,D49,R71,U7,L72".parse().unwrap();
         let wire2: Path = "U62,R66,U55,R34,D71,R55,D58,R83".parse().unwrap();
-        assert_eq!(wire1.closest_intersection(&wire2).unwrap().distance(), 159);
+        assert_eq!(wire1.closest_intersection(&wire2).unwrap().1, 159);
 
         let wire1: Path = "R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51"
             .parse()
             .unwrap();
         let wire2: Path = "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7".parse().unwrap();
-        assert_eq!(wire1.closest_intersection(&wire2).unwrap().distance(), 135);
+        assert_eq!(wire1.closest_intersection(&wire2).unwrap().1, 135);
+    }
+
+    #[test]
+    fn part_2() {
+        let wire1: Path = "R8,U5,L5,D3".parse().unwrap();
+        let wire2: Path = "U7,R6,D4,L4".parse().unwrap();
+        assert_eq!(wire1.shortest_intersection(&wire2).unwrap().1, 30);
+
+        let wire1: Path = "R75,D30,R83,U83,L12,D49,R71,U7,L72".parse().unwrap();
+        let wire2: Path = "U62,R66,U55,R34,D71,R55,D58,R83".parse().unwrap();
+        assert_eq!(wire1.shortest_intersection(&wire2).unwrap().1, 610);
+
+        let wire1: Path = "R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51"
+            .parse()
+            .unwrap();
+        let wire2: Path = "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7".parse().unwrap();
+        assert_eq!(wire1.shortest_intersection(&wire2).unwrap().1, 410);
     }
 }
