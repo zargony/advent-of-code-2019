@@ -307,3 +307,40 @@ impl<'m> Vm<'m> {
         self.memory.get(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn day02_example_1() {
+        let mut memory = Memory::from(vec![1, 0, 0, 0, 99]);
+        let mut vm = Vm::new(&mut memory);
+        vm.run();
+        assert_eq!(vm.memory(), &[2, 0, 0, 0, 99]);
+    }
+
+    #[test]
+    fn day02_example_2() {
+        let mut memory = Memory::from(vec![2, 3, 0, 3, 99]);
+        let mut vm = Vm::new(&mut memory);
+        vm.run();
+        assert_eq!(vm.memory(), &[2, 3, 0, 6, 99]);
+    }
+
+    #[test]
+    fn day02_example_3() {
+        let mut memory = Memory::from(vec![2, 4, 4, 5, 99, 0]);
+        let mut vm = Vm::new(&mut memory);
+        vm.run();
+        assert_eq!(vm.memory(), &[2, 4, 4, 5, 99, 9801]);
+    }
+
+    #[test]
+    fn day02_example_4() {
+        let mut memory = Memory::from(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]);
+        let mut vm = Vm::new(&mut memory);
+        vm.run();
+        assert_eq!(vm.memory(), &[30, 1, 1, 4, 2, 5, 6, 0, 99]);
+    }
+}
