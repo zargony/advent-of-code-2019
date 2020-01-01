@@ -158,6 +158,14 @@ enum Instruction {
     Input(Param),
     /// Output value
     Output(Param),
+    /// Jump if true / not zero: set instruction pointer to p2 if p1 is not zero
+    JumpIfNotZero(Param, Param),
+    /// Jump if false / zero: set instruction pointer to p2 if p1 is zero
+    JumpIfZero(Param, Param),
+    /// Less than: if p1 is less than p2, stores 1 to p3, 0 otherwise
+    LessThan(Param, Param, Param),
+    /// Equals: if p1 equals p2, stores 1 to p3, 0 otherwise
+    Equals(Param, Param, Param),
     /// Program done
     Done,
 }
@@ -165,10 +173,14 @@ enum Instruction {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Instruction::Add(p1, p2, p3) => write!(f, "add {}, {}, {}", p1, p2, p3),
-            Instruction::Multiply(p1, p2, p3) => write!(f, "mul {}, {}, {}", p1, p2, p3),
+            Instruction::Add(p1, p2, p3) => write!(f, "add {} {} {}", p1, p2, p3),
+            Instruction::Multiply(p1, p2, p3) => write!(f, "mul {} {} {}", p1, p2, p3),
             Instruction::Input(p1) => write!(f, "in {}", p1),
             Instruction::Output(p1) => write!(f, "out {}", p1),
+            Instruction::JumpIfNotZero(p1, p2) => write!(f, "jnz {} {}", p1, p2),
+            Instruction::JumpIfZero(p1, p2) => write!(f, "jz  {} {}", p1, p2),
+            Instruction::LessThan(p1, p2, p3) => write!(f, "lt  {} {} {}", p1, p2, p3),
+            Instruction::Equals(p1, p2, p3) => write!(f, "eq  {} {} {}", p1, p2, p3),
             Instruction::Done => write!(f, "done"),
         }
     }
@@ -190,19 +202,20 @@ impl Instruction {
             ),
             3 => Instruction::Input(Param::parse(mem, 0)),
             4 => Instruction::Output(Param::parse(mem, 0)),
+            5 => Instruction::JumpIfNotZero(Param::parse(mem, 0), Param::parse(mem, 1)),
+            6 => Instruction::JumpIfZero(Param::parse(mem, 0), Param::parse(mem, 1)),
+            7 => Instruction::LessThan(
+                Param::parse(mem, 0),
+                Param::parse(mem, 1),
+                Param::parse(mem, 2),
+            ),
+            8 => Instruction::Equals(
+                Param::parse(mem, 0),
+                Param::parse(mem, 1),
+                Param::parse(mem, 2),
+            ),
             99 => Instruction::Done,
             opcode => panic!("Unknown opcode {}", opcode),
-        }
-    }
-
-    /// Size of instruction
-    fn size(&self) -> usize {
-        match self {
-            Instruction::Add(..) => 4,
-            Instruction::Multiply(..) => 4,
-            Instruction::Input(..) => 2,
-            Instruction::Output(..) => 2,
-            Instruction::Done => 0,
         }
     }
 
@@ -212,21 +225,54 @@ impl Instruction {
             Instruction::Add(p1, p2, p3) => {
                 let result = p1.fetch(&vm.memory) + p2.fetch(&vm.memory);
                 p3.store(&mut vm.memory, result);
+                vm.ip += 4;
             }
             Instruction::Multiply(p1, p2, p3) => {
                 let result = p1.fetch(&vm.memory) * p2.fetch(&vm.memory);
                 p3.store(&mut vm.memory, result);
+                vm.ip += 4;
             }
             Instruction::Input(p1) => {
                 assert!(vm.input.len() > 0, "No input values left");
                 p1.store(&mut vm.memory, vm.input.pop_front().unwrap());
+                vm.ip += 2;
             }
             Instruction::Output(p1) => {
                 vm.output.push(p1.fetch(&vm.memory));
+                vm.ip += 2;
+            }
+            Instruction::JumpIfNotZero(p1, p2) => {
+                if p1.fetch(&vm.memory) != 0 {
+                    vm.ip = p2.fetch(&vm.memory) as Address;
+                } else {
+                    vm.ip += 3;
+                }
+            }
+            Instruction::JumpIfZero(p1, p2) => {
+                if p1.fetch(&vm.memory) == 0 {
+                    vm.ip = p2.fetch(&vm.memory) as Address;
+                } else {
+                    vm.ip += 3;
+                }
+            }
+            Instruction::LessThan(p1, p2, p3) => {
+                if p1.fetch(&vm.memory) < p2.fetch(&vm.memory) {
+                    p3.store(&mut vm.memory, 1);
+                } else {
+                    p3.store(&mut vm.memory, 0);
+                }
+                vm.ip += 4;
+            }
+            Instruction::Equals(p1, p2, p3) => {
+                if p1.fetch(&vm.memory) == p2.fetch(&vm.memory) {
+                    p3.store(&mut vm.memory, 1);
+                } else {
+                    p3.store(&mut vm.memory, 0);
+                }
+                vm.ip += 4;
             }
             Instruction::Done => vm.done = true,
         }
-        vm.ip += self.size();
     }
 }
 
@@ -342,5 +388,92 @@ mod tests {
         let mut vm = Vm::new(&mut memory);
         vm.run();
         assert_eq!(vm.memory(), &[30, 1, 1, 4, 2, 5, 6, 0, 99]);
+    }
+
+    #[test]
+    fn day05_position_mode_equals() {
+        let mut memory = Memory::from(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[5]).run();
+        assert_eq!(vm.output(), &[0]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[8]).run();
+        assert_eq!(vm.output(), &[1]);
+    }
+
+    #[test]
+    fn day05_position_mode_less_than() {
+        let mut memory = Memory::from(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[5]).run();
+        assert_eq!(vm.output(), &[1]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[8]).run();
+        assert_eq!(vm.output(), &[0]);
+    }
+
+    #[test]
+    fn day05_immediate_mode_equals() {
+        let mut memory = Memory::from(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[5]).run();
+        assert_eq!(vm.output(), &[0]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[8]).run();
+        assert_eq!(vm.output(), &[1]);
+    }
+
+    #[test]
+    fn day05_immediate_mode_less_than() {
+        let mut memory = Memory::from(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[5]).run();
+        assert_eq!(vm.output(), &[1]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[8]).run();
+        assert_eq!(vm.output(), &[0]);
+    }
+
+    #[test]
+    fn day05_position_mode_jump() {
+        let mut memory = Memory::from(vec![
+            3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9,
+        ]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[0]).run();
+        assert_eq!(vm.output(), &[0]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[1]).run();
+        assert_eq!(vm.output(), &[1]);
+    }
+
+    #[test]
+    fn day05_immediate_mode_jump() {
+        let mut memory = Memory::from(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[0]).run();
+        assert_eq!(vm.output(), &[0]);
+        let mut memory = Memory::from(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[1]).run();
+        assert_eq!(vm.output(), &[1]);
+    }
+
+    #[test]
+    fn day05_large_example() {
+        let mut memory = Memory::from(vec![
+            3, 21, 1008, 21, 8, 20, 1005, 20, 22, 107, 8, 21, 20, 1006, 20, 31, 1106, 0, 36, 98, 0,
+            0, 1002, 21, 125, 20, 4, 20, 1105, 1, 46, 104, 999, 1105, 1, 46, 1101, 1000, 1, 20, 4,
+            20, 1105, 1, 46, 98, 99,
+        ]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[5]).run();
+        assert_eq!(vm.output(), &[999]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[8]).run();
+        assert_eq!(vm.output(), &[1000]);
+        let mut vm = Vm::new(&mut memory);
+        vm.input(&[11]).run();
+        assert_eq!(vm.output(), &[1001]);
     }
 }
