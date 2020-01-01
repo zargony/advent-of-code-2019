@@ -2,7 +2,7 @@
 
 use crate::input::Input;
 use futures_util::stream::TryStreamExt;
-use std::io;
+use std::{fmt, io};
 
 /// Intcode memory address
 type Address = usize;
@@ -65,6 +65,19 @@ impl Memory {
         self.0[addr]
     }
 
+    /// Get slice of values at given memory address window
+    pub fn get_slice(&self, addr: Address, len: usize) -> &[Value] {
+        let addr_end = Address::min(addr + len, self.size());
+        assert!(
+            addr < self.size(),
+            "Reading from memory out of bounds ({}..{} >= {})",
+            addr,
+            addr_end,
+            self.size()
+        );
+        &self.0[addr..addr_end]
+    }
+
     /// Set value at given memory address
     pub fn set(&mut self, addr: Address, value: Value) {
         assert!(
@@ -74,6 +87,128 @@ impl Memory {
             self.size()
         );
         self.0[addr] = value;
+    }
+}
+
+/// Intcode parameter
+///
+/// Instructions in Intcode use a certain number of parameters in certain parameter modes. The
+/// mode of a parameter determines how the parameter is used to fetch or store the actual value.
+#[derive(Debug)]
+enum Param {
+    /// Position mode: parameter points to an address containing the value
+    Position(Address),
+    /// Immediate mode: parameter is used as the value
+    Immediate(Value),
+}
+
+impl fmt::Display for Param {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Param::Position(addr) => write!(f, "[{}]", addr),
+            Param::Immediate(value) => write!(f, "{}", value),
+        }
+    }
+}
+
+impl Param {
+    /// Parse parameter with the given number from memory
+    fn parse(mem: &[Value], n: usize) -> Self {
+        debug_assert!(n < 3, "Parameter {} out of range", n);
+        let div = (10 as Value).pow(n as u32) * 100;
+        match mem[0] / div % 10 {
+            0 => Param::Position(mem[1 + n] as Address),
+            1 => Param::Immediate(mem[1 + n]),
+            mode => panic!(
+                "Unknown parameter mode {} for parameter {} in instruction {}",
+                mode, n, mem[0],
+            ),
+        }
+    }
+
+    /// Fetch value for this parameter
+    fn fetch(&self, memory: &Memory) -> Value {
+        match self {
+            Param::Position(address) => memory.get(*address),
+            Param::Immediate(value) => *value,
+        }
+    }
+
+    /// Store value into this parameter
+    fn store(&self, memory: &mut Memory, value: Value) {
+        match self {
+            Param::Position(address) => memory.set(*address, value),
+            Param::Immediate(_value) => panic!("Can't store to immediate mode parameter"),
+        }
+    }
+}
+
+/// Intcode instruction
+///
+/// Instructions in Intcode consist of the opcode that determines the operation and zero or more
+/// parameters depending on which opcode is used.
+#[derive(Debug)]
+enum Instruction {
+    /// Addition. Adds p1 and p2 and stores the sum in p3
+    Add(Param, Param, Param),
+    /// Addition. Multiplies p1 and p2 and stores the product in p3
+    Multiply(Param, Param, Param),
+    /// Program done
+    Done,
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Instruction::Add(p1, p2, p3) => write!(f, "add {}, {}, {}", p1, p2, p3),
+            Instruction::Multiply(p1, p2, p3) => write!(f, "mul {}, {}, {}", p1, p2, p3),
+            Instruction::Done => write!(f, "done"),
+        }
+    }
+}
+
+impl Instruction {
+    /// Parse instruction from memory
+    fn parse(mem: &[Value]) -> Self {
+        match mem[0] % 100 {
+            1 => Instruction::Add(
+                Param::parse(mem, 0),
+                Param::parse(mem, 1),
+                Param::parse(mem, 2),
+            ),
+            2 => Instruction::Multiply(
+                Param::parse(mem, 0),
+                Param::parse(mem, 1),
+                Param::parse(mem, 2),
+            ),
+            99 => Instruction::Done,
+            opcode => panic!("Unknown opcode {}", opcode),
+        }
+    }
+
+    /// Size of instruction
+    fn size(&self) -> usize {
+        match self {
+            Instruction::Add(..) => 4,
+            Instruction::Multiply(..) => 4,
+            Instruction::Done => 0,
+        }
+    }
+
+    /// Execute instruction
+    fn execute(&self, vm: &mut Vm<'_>) {
+        match self {
+            Instruction::Add(p1, p2, p3) => {
+                let result = p1.fetch(&vm.memory) + p2.fetch(&vm.memory);
+                p3.store(&mut vm.memory, result);
+            }
+            Instruction::Multiply(p1, p2, p3) => {
+                let result = p1.fetch(&vm.memory) * p2.fetch(&vm.memory);
+                p3.store(&mut vm.memory, result);
+            }
+            Instruction::Done => vm.done = true,
+        }
+        vm.ip += self.size();
     }
 }
 
@@ -114,32 +249,8 @@ impl<'m> Vm<'m> {
 
     /// Run one program step
     pub fn step(&mut self) {
-        match self.memory.get(self.ip) {
-            // Instruction with opcode 1: addition
-            1 => {
-                let param1 = self.memory.get(self.ip + 1);
-                let param2 = self.memory.get(self.ip + 2);
-                let param3 = self.memory.get(self.ip + 3);
-                let result = self.memory.get(param1 as usize) + self.memory.get(param2 as usize);
-                self.memory.set(param3 as usize, result);
-            }
-            // Instruction with opcode 2: multiplication
-            2 => {
-                let param1 = self.memory.get(self.ip + 1);
-                let param2 = self.memory.get(self.ip + 2);
-                let param3 = self.memory.get(self.ip + 3);
-                let result = self.memory.get(param1 as usize) * self.memory.get(param2 as usize);
-                self.memory.set(param3 as usize, result);
-            }
-            // Instruction with opcode 99: done
-            99 => {
-                self.done = true;
-                return;
-            }
-            // Instruction with unknown opcode: crash
-            opcode => panic!("Unknown opcode {} at address {}", opcode, self.ip),
-        }
-        self.ip += 4;
+        let instruction = Instruction::parse(self.memory.get_slice(self.ip, 4));
+        instruction.execute(self);
     }
 
     /// Run program (run steps until done)
