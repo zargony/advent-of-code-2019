@@ -2,6 +2,7 @@
 
 use crate::input::Input;
 use futures_util::stream::TryStreamExt;
+use std::collections::VecDeque;
 use std::{fmt, io};
 
 /// Intcode memory address
@@ -153,6 +154,10 @@ enum Instruction {
     Add(Param, Param, Param),
     /// Addition. Multiplies p1 and p2 and stores the product in p3
     Multiply(Param, Param, Param),
+    /// Get value from input and store it in p1
+    Input(Param),
+    /// Output value
+    Output(Param),
     /// Program done
     Done,
 }
@@ -162,6 +167,8 @@ impl fmt::Display for Instruction {
         match self {
             Instruction::Add(p1, p2, p3) => write!(f, "add {}, {}, {}", p1, p2, p3),
             Instruction::Multiply(p1, p2, p3) => write!(f, "mul {}, {}, {}", p1, p2, p3),
+            Instruction::Input(p1) => write!(f, "in {}", p1),
+            Instruction::Output(p1) => write!(f, "out {}", p1),
             Instruction::Done => write!(f, "done"),
         }
     }
@@ -181,6 +188,8 @@ impl Instruction {
                 Param::parse(mem, 1),
                 Param::parse(mem, 2),
             ),
+            3 => Instruction::Input(Param::parse(mem, 0)),
+            4 => Instruction::Output(Param::parse(mem, 0)),
             99 => Instruction::Done,
             opcode => panic!("Unknown opcode {}", opcode),
         }
@@ -191,6 +200,8 @@ impl Instruction {
         match self {
             Instruction::Add(..) => 4,
             Instruction::Multiply(..) => 4,
+            Instruction::Input(..) => 2,
+            Instruction::Output(..) => 2,
             Instruction::Done => 0,
         }
     }
@@ -206,6 +217,13 @@ impl Instruction {
                 let result = p1.fetch(&vm.memory) * p2.fetch(&vm.memory);
                 p3.store(&mut vm.memory, result);
             }
+            Instruction::Input(p1) => {
+                assert!(vm.input.len() > 0, "No input values left");
+                p1.store(&mut vm.memory, vm.input.pop_front().unwrap());
+            }
+            Instruction::Output(p1) => {
+                vm.output.push(p1.fetch(&vm.memory));
+            }
             Instruction::Done => vm.done = true,
         }
         vm.ip += self.size();
@@ -219,6 +237,10 @@ pub struct Vm<'m> {
     memory: &'m mut Memory,
     /// Instruction pointer (address of next instruction)
     ip: Address,
+    /// Input values
+    input: VecDeque<Value>,
+    /// Output values
+    output: Vec<Value>,
     /// Flag to signal that the program is done
     done: bool,
 }
@@ -229,6 +251,8 @@ impl<'m> Vm<'m> {
         Self {
             memory,
             ip: Address::default(),
+            input: VecDeque::new(),
+            output: Vec::new(),
             done: false,
         }
     }
@@ -247,6 +271,13 @@ impl<'m> Vm<'m> {
         self
     }
 
+    /// Set input values
+    pub fn input(&mut self, values: &[Value]) -> &mut Self {
+        self.input.clear();
+        self.input.extend(values);
+        self
+    }
+
     /// Run one program step
     pub fn step(&mut self) {
         let instruction = Instruction::parse(self.memory.get_slice(self.ip, 4));
@@ -259,6 +290,11 @@ impl<'m> Vm<'m> {
             self.step();
         }
         self
+    }
+
+    /// Return a reference to output values
+    pub fn output(&self) -> &[Value] {
+        &self.output
     }
 
     /// Return a reference to the memory
