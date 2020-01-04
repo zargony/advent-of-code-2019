@@ -6,10 +6,10 @@ use std::collections::VecDeque;
 use std::{fmt, io};
 
 /// Intcode memory address
-type Address = usize;
+pub type Address = usize;
 
 /// Intcode memory value
-type Value = i32;
+pub type Value = i32;
 
 /// Intcode memory
 ///
