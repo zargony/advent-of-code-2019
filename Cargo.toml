@@ -6,7 +6,7 @@ description = "Solutions to the Advent of Code 2019 puzzles"
 edition = "2018"
 
 [dependencies]
-async-std = { version = "1.4", features = ["attributes"] }
+async-std = { version = "1.4", features = ["attributes", "unstable"] }
 err-derive = "0.2"
 futures-util = "0.3"
 permutator = "0.4"

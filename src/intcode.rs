@@ -1,8 +1,10 @@
 //! Advent of Code 2019: Intcode
 
 use crate::input::Input;
+use async_std::prelude::*;
+use async_std::sync::{self, Sender};
 use futures_util::stream::TryStreamExt;
-use std::collections::VecDeque;
+use std::marker::Unpin;
 use std::{fmt, io};
 
 /// Intcode memory address
@@ -220,7 +222,7 @@ impl Instruction {
     }
 
     /// Execute instruction
-    fn execute(&self, vm: &mut Vm) {
+    async fn execute(&self, vm: &mut Vm) {
         match self {
             Instruction::Add(p1, p2, p3) => {
                 let result = p1.fetch(&vm.memory) + p2.fetch(&vm.memory);
@@ -233,12 +235,17 @@ impl Instruction {
                 vm.ip += 4;
             }
             Instruction::Input(p1) => {
-                assert!(vm.input.len() > 0, "No input values left");
-                p1.store(&mut vm.memory, vm.input.pop_front().unwrap());
+                let rx = vm.input.as_mut().expect("No input channel set");
+                let value = rx
+                    .next()
+                    .await
+                    .expect("No input values left (input channel closed)");
+                p1.store(&mut vm.memory, value);
                 vm.ip += 2;
             }
             Instruction::Output(p1) => {
-                vm.output.push(p1.fetch(&vm.memory));
+                let tx = vm.output.as_mut().expect("No output channel set");
+                tx.send(p1.fetch(&vm.memory)).await;
                 vm.ip += 2;
             }
             Instruction::JumpIfNotZero(p1, p2) => {
@@ -271,24 +278,39 @@ impl Instruction {
                 }
                 vm.ip += 4;
             }
-            Instruction::Done => vm.done = true,
+            Instruction::Done => {
+                vm.input = None;
+                vm.output = None;
+                vm.done = true;
+            }
         }
     }
 }
 
 /// Intcode virtual machine
-#[derive(Debug)]
 pub struct Vm {
     /// Memory of the virtual machine
     memory: Memory,
     /// Instruction pointer (address of next instruction)
     ip: Address,
-    /// Input values
-    input: VecDeque<Value>,
-    /// Output values
-    output: Vec<Value>,
+    /// Input channel for receiving input values
+    input: Option<Box<dyn Stream<Item = Value> + Unpin>>,
+    /// Output channel for sending output values
+    output: Option<Sender<Value>>,
     /// Flag to signal that the program is done
     done: bool,
+}
+
+impl fmt::Debug for Vm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Vm")
+            .field("memory", &self.memory)
+            .field("ip", &self.ip)
+            .field("input-present", &self.input.is_some())
+            .field("output-present", &self.output.is_some())
+            .field("done", &self.done)
+            .finish()
+    }
 }
 
 impl From<Memory> for Vm {
@@ -296,8 +318,8 @@ impl From<Memory> for Vm {
         Self {
             memory,
             ip: Address::default(),
-            input: VecDeque::new(),
-            output: Vec::new(),
+            input: None,
+            output: None,
             done: false,
         }
     }
@@ -323,30 +345,37 @@ impl Vm {
         self
     }
 
-    /// Set input values
-    pub fn input(&mut self, values: &[Value]) -> &mut Self {
-        self.input.clear();
-        self.input.extend(values);
+    /// Set stream that yields input values for the vm
+    pub fn input(&mut self, input: impl Stream<Item = Value> + Unpin + 'static) -> &mut Self {
+        self.input = Some(Box::new(input));
         self
     }
 
     /// Run one program step
-    pub fn step(&mut self) {
+    pub async fn step(&mut self) {
         let instruction = Instruction::parse(self.memory.get_slice(self.ip, 4));
-        instruction.execute(self);
+        instruction.execute(self).await;
     }
 
     /// Run program (run steps until done)
-    pub fn run(&mut self) -> &mut Self {
+    pub async fn run(&mut self) {
         while !self.done {
-            self.step();
+            self.step().await;
         }
-        self
     }
 
-    /// Return a reference to output values
-    pub fn output(&self) -> &[Value] {
-        &self.output
+    /// Run program and collect output into a vector
+    pub async fn run_and_collect(&mut self) -> Vec<Value> {
+        let rx = self.output();
+        self.run().join(rx.collect()).await.1
+    }
+
+    /// Return a stream that yields output values of the vm
+    pub fn output(&mut self) -> impl Stream<Item = Value> + Unpin + 'static {
+        assert!(self.output.is_none(), "Output stream already set");
+        let (tx, rx) = sync::channel(1);
+        self.output = Some(tx);
+        rx
     }
 
     /// Return a reference to the memory
@@ -363,121 +392,122 @@ impl Vm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_std::stream;
 
-    #[test]
-    fn day02_example_1() {
+    #[async_std::test]
+    async fn day02_example_1() {
         let program = Memory::from(vec![1, 0, 0, 0, 99]);
         let mut vm = Vm::new(program);
-        vm.run();
+        vm.run().await;
         assert_eq!(vm.memory(), &[2, 0, 0, 0, 99]);
     }
 
-    #[test]
-    fn day02_example_2() {
+    #[async_std::test]
+    async fn day02_example_2() {
         let program = Memory::from(vec![2, 3, 0, 3, 99]);
         let mut vm = Vm::new(program);
-        vm.run();
+        vm.run().await;
         assert_eq!(vm.memory(), &[2, 3, 0, 6, 99]);
     }
 
-    #[test]
-    fn day02_example_3() {
+    #[async_std::test]
+    async fn day02_example_3() {
         let program = Memory::from(vec![2, 4, 4, 5, 99, 0]);
         let mut vm = Vm::new(program);
-        vm.run();
+        vm.run().await;
         assert_eq!(vm.memory(), &[2, 4, 4, 5, 99, 9801]);
     }
 
-    #[test]
-    fn day02_example_4() {
+    #[async_std::test]
+    async fn day02_example_4() {
         let program = Memory::from(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]);
         let mut vm = Vm::new(program);
-        vm.run();
+        vm.run().await;
         assert_eq!(vm.memory(), &[30, 1, 1, 4, 2, 5, 6, 0, 99]);
     }
 
-    #[test]
-    fn day05_position_mode_equals() {
+    #[async_std::test]
+    async fn day05_position_mode_equals() {
         let program = Memory::from(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[5]).run();
-        assert_eq!(vm.output(), &[0]);
+        vm.input(stream::from_iter(vec![5]));
+        assert_eq!(vm.run_and_collect().await, &[0]);
 
         let mut vm = Vm::new(program);
-        vm.input(&[8]).run();
-        assert_eq!(vm.output(), &[1]);
+        vm.input(stream::from_iter(vec![8]));
+        assert_eq!(vm.run_and_collect().await, &[1]);
     }
 
-    #[test]
-    fn day05_position_mode_less_than() {
+    #[async_std::test]
+    async fn day05_position_mode_less_than() {
         let program = Memory::from(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[5]).run();
-        assert_eq!(vm.output(), &[1]);
+        vm.input(stream::from_iter(vec![5]));
+        assert_eq!(vm.run_and_collect().await, &[1]);
 
         let mut vm = Vm::new(program);
-        vm.input(&[8]).run();
-        assert_eq!(vm.output(), &[0]);
+        vm.input(stream::from_iter(vec![8]));
+        assert_eq!(vm.run_and_collect().await, &[0]);
     }
 
-    #[test]
-    fn day05_immediate_mode_equals() {
+    #[async_std::test]
+    async fn day05_immediate_mode_equals() {
         let program = Memory::from(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[5]).run();
-        assert_eq!(vm.output(), &[0]);
+        vm.input(stream::from_iter(vec![5]));
+        assert_eq!(vm.run_and_collect().await, &[0]);
 
         let mut vm = Vm::new(program);
-        vm.input(&[8]).run();
-        assert_eq!(vm.output(), &[1]);
+        vm.input(stream::from_iter(vec![8]));
+        assert_eq!(vm.run_and_collect().await, &[1]);
     }
 
-    #[test]
-    fn day05_immediate_mode_less_than() {
+    #[async_std::test]
+    async fn day05_immediate_mode_less_than() {
         let program = Memory::from(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[5]).run();
-        assert_eq!(vm.output(), &[1]);
+        vm.input(stream::from_iter(vec![5]));
+        assert_eq!(vm.run_and_collect().await, &[1]);
 
         let mut vm = Vm::new(program);
-        vm.input(&[8]).run();
-        assert_eq!(vm.output(), &[0]);
+        vm.input(stream::from_iter(vec![8]));
+        assert_eq!(vm.run_and_collect().await, &[0]);
     }
 
-    #[test]
-    fn day05_position_mode_jump() {
+    #[async_std::test]
+    async fn day05_position_mode_jump() {
         let program = Memory::from(vec![
             3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9,
         ]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[0]).run();
-        assert_eq!(vm.output(), &[0]);
+        vm.input(stream::from_iter(vec![0]));
+        assert_eq!(vm.run_and_collect().await, &[0]);
 
         let mut vm = Vm::new(program);
-        vm.input(&[1]).run();
-        assert_eq!(vm.output(), &[1]);
+        vm.input(stream::from_iter(vec![1]));
+        assert_eq!(vm.run_and_collect().await, &[1]);
     }
 
-    #[test]
-    fn day05_immediate_mode_jump() {
+    #[async_std::test]
+    async fn day05_immediate_mode_jump() {
         let program = Memory::from(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[0]).run();
-        assert_eq!(vm.output(), &[0]);
+        vm.input(stream::from_iter(vec![0]));
+        assert_eq!(vm.run_and_collect().await, &[0]);
 
         let mut vm = Vm::new(program);
-        vm.input(&[1]).run();
-        assert_eq!(vm.output(), &[1]);
+        vm.input(stream::from_iter(vec![1]));
+        assert_eq!(vm.run_and_collect().await, &[1]);
     }
 
-    #[test]
-    fn day05_large_example() {
+    #[async_std::test]
+    async fn day05_large_example() {
         let program = Memory::from(vec![
             3, 21, 1008, 21, 8, 20, 1005, 20, 22, 107, 8, 21, 20, 1006, 20, 31, 1106, 0, 36, 98, 0,
             0, 1002, 21, 125, 20, 4, 20, 1105, 1, 46, 104, 999, 1105, 1, 46, 1101, 1000, 1, 20, 4,
@@ -485,15 +515,15 @@ mod tests {
         ]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[5]).run();
-        assert_eq!(vm.output(), &[999]);
+        vm.input(stream::from_iter(vec![5]));
+        assert_eq!(vm.run_and_collect().await, &[999]);
 
         let mut vm = Vm::new(program.clone());
-        vm.input(&[8]).run();
-        assert_eq!(vm.output(), &[1000]);
+        vm.input(stream::from_iter(vec![8]));
+        assert_eq!(vm.run_and_collect().await, &[1000]);
 
         let mut vm = Vm::new(program);
-        vm.input(&[11]).run();
-        assert_eq!(vm.output(), &[1001]);
+        vm.input(stream::from_iter(vec![11]));
+        assert_eq!(vm.run_and_collect().await, &[1001]);
     }
 }

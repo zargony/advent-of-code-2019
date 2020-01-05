@@ -1,5 +1,5 @@
 use advent_of_code_2019::intcode::{Memory, Value, Vm};
-use async_std::io;
+use async_std::{io, stream, task};
 
 struct AmplificationCircuit {
     program: Memory,
@@ -14,8 +14,8 @@ impl AmplificationCircuit {
     /// Run a single amplifier with the given phase setting and input value
     fn run_amp(&self, phase: Value, input: Value) -> Value {
         let mut vm = Vm::new(self.program.clone());
-        vm.input(&[phase, input]).run();
-        vm.output()[0]
+        vm.input(stream::from_iter(vec![phase, input]));
+        task::block_on(vm.run_and_collect())[0]
     }
 
     /// Run a chain of amplifiers with the given phase settings
@@ -25,7 +25,7 @@ impl AmplificationCircuit {
             .fold(0, |value, phase| self.run_amp(*phase, value))
     }
 
-    /// Run chain of 5 amplifiers trying all permuations of phase settings to find the max output
+    /// Run chain of 5 amplifiers trying all permutations of phase settings to find the max output
     fn find_max_thrust_k5(&self) -> (Vec<Value>, Value) {
         permutator::KPermutationIterator::new(&[0, 1, 2, 3, 4], 5)
             .map(|phases| phases.into_iter().cloned().collect::<Vec<_>>())
@@ -58,7 +58,10 @@ mod tests {
             3, 15, 3, 16, 1002, 16, 10, 16, 1, 16, 15, 15, 4, 15, 99, 0, 0,
         ]);
         let amplifiers = AmplificationCircuit::new(program);
-        assert_eq!(amplifiers.find_max_thrust_k5(), (vec![4, 3, 2, 1, 0], 43210));
+        assert_eq!(
+            amplifiers.find_max_thrust_k5(),
+            (vec![4, 3, 2, 1, 0], 43210)
+        );
     }
 
     #[test]
@@ -68,7 +71,10 @@ mod tests {
             99, 0, 0,
         ]);
         let amplifiers = AmplificationCircuit::new(program);
-        assert_eq!(amplifiers.find_max_thrust_k5(), (vec![0, 1, 2, 3, 4], 54321));
+        assert_eq!(
+            amplifiers.find_max_thrust_k5(),
+            (vec![0, 1, 2, 3, 4], 54321)
+        );
     }
 
     #[test]
@@ -78,6 +84,9 @@ mod tests {
             33, 31, 31, 1, 32, 31, 31, 4, 31, 99, 0, 0, 0,
         ]);
         let amplifiers = AmplificationCircuit::new(program);
-        assert_eq!(amplifiers.find_max_thrust_k5(), (vec![1, 0, 4, 3, 2], 65210));
+        assert_eq!(
+            amplifiers.find_max_thrust_k5(),
+            (vec![1, 0, 4, 3, 2], 65210)
+        );
     }
 }

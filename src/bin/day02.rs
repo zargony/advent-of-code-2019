@@ -6,13 +6,13 @@ async fn main() -> io::Result<()> {
     let program = Memory::from_day(2).await?;
 
     let mut vm = Vm::new(program.clone());
-    vm.noun(12).verb(2).run();
+    vm.noun(12).verb(2).run().await;
     println!("Result: {}", vm.result());
 
     'out: for noun in 0..=99 {
         for verb in 0..=99 {
             let mut vm = Vm::new(program.clone());
-            vm.noun(noun).verb(verb).run();
+            vm.noun(noun).verb(verb).run().await;
             if vm.result() == 19690720 {
                 println!(
                     "Noun {} verb {} produces result {}",
