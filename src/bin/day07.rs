@@ -13,8 +13,7 @@ impl AmplificationCircuit {
 
     /// Run a single amplifier with the given phase setting and input value
     fn run_amp(&self, phase: Value, input: Value) -> Value {
-        let mut memory = self.program.clone();
-        let mut vm = Vm::new(&mut memory);
+        let mut vm = Vm::new(self.program.clone());
         vm.input(&[phase, input]).run();
         vm.output()[0]
     }

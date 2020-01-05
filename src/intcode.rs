@@ -113,7 +113,7 @@ impl fmt::Display for Param {
 }
 
 impl Param {
-    /// Parse parameter with the given number from memory
+    /// Parse parameter with the given number from memory slice of the instruction
     fn parse(mem: &[Value], n: usize) -> Self {
         debug_assert!(n < 3, "Parameter {} out of range", n);
         let div = (10 as Value).pow(n as u32) * 100;
@@ -187,7 +187,7 @@ impl fmt::Display for Instruction {
 }
 
 impl Instruction {
-    /// Parse instruction from memory
+    /// Parse instruction from memory slice
     fn parse(mem: &[Value]) -> Self {
         match mem[0] % 100 {
             1 => Instruction::Add(
@@ -220,7 +220,7 @@ impl Instruction {
     }
 
     /// Execute instruction
-    fn execute(&self, vm: &mut Vm<'_>) {
+    fn execute(&self, vm: &mut Vm) {
         match self {
             Instruction::Add(p1, p2, p3) => {
                 let result = p1.fetch(&vm.memory) + p2.fetch(&vm.memory);
@@ -278,9 +278,9 @@ impl Instruction {
 
 /// Intcode virtual machine
 #[derive(Debug)]
-pub struct Vm<'m> {
+pub struct Vm {
     /// Memory of the virtual machine
-    memory: &'m mut Memory,
+    memory: Memory,
     /// Instruction pointer (address of next instruction)
     ip: Address,
     /// Input values
@@ -291,9 +291,8 @@ pub struct Vm<'m> {
     done: bool,
 }
 
-impl<'m> Vm<'m> {
-    /// Create new virtual machine with the given memory
-    pub fn new(memory: &'m mut Memory) -> Self {
+impl From<Memory> for Vm {
+    fn from(memory: Memory) -> Self {
         Self {
             memory,
             ip: Address::default(),
@@ -301,6 +300,13 @@ impl<'m> Vm<'m> {
             output: Vec::new(),
             done: false,
         }
+    }
+}
+
+impl Vm {
+    /// Create new virtual machine with the given program memory
+    pub fn new(program: Memory) -> Self {
+        Self::from(program)
     }
 
     /// Set noun (value at memory address 1)
@@ -360,119 +366,133 @@ mod tests {
 
     #[test]
     fn day02_example_1() {
-        let mut memory = Memory::from(vec![1, 0, 0, 0, 99]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![1, 0, 0, 0, 99]);
+        let mut vm = Vm::new(program);
         vm.run();
         assert_eq!(vm.memory(), &[2, 0, 0, 0, 99]);
     }
 
     #[test]
     fn day02_example_2() {
-        let mut memory = Memory::from(vec![2, 3, 0, 3, 99]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![2, 3, 0, 3, 99]);
+        let mut vm = Vm::new(program);
         vm.run();
         assert_eq!(vm.memory(), &[2, 3, 0, 6, 99]);
     }
 
     #[test]
     fn day02_example_3() {
-        let mut memory = Memory::from(vec![2, 4, 4, 5, 99, 0]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![2, 4, 4, 5, 99, 0]);
+        let mut vm = Vm::new(program);
         vm.run();
         assert_eq!(vm.memory(), &[2, 4, 4, 5, 99, 9801]);
     }
 
     #[test]
     fn day02_example_4() {
-        let mut memory = Memory::from(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]);
+        let mut vm = Vm::new(program);
         vm.run();
         assert_eq!(vm.memory(), &[30, 1, 1, 4, 2, 5, 6, 0, 99]);
     }
 
     #[test]
     fn day05_position_mode_equals() {
-        let mut memory = Memory::from(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8]);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[5]).run();
         assert_eq!(vm.output(), &[0]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program);
         vm.input(&[8]).run();
         assert_eq!(vm.output(), &[1]);
     }
 
     #[test]
     fn day05_position_mode_less_than() {
-        let mut memory = Memory::from(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8]);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[5]).run();
         assert_eq!(vm.output(), &[1]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program);
         vm.input(&[8]).run();
         assert_eq!(vm.output(), &[0]);
     }
 
     #[test]
     fn day05_immediate_mode_equals() {
-        let mut memory = Memory::from(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![3, 3, 1108, -1, 8, 3, 4, 3, 99]);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[5]).run();
         assert_eq!(vm.output(), &[0]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program);
         vm.input(&[8]).run();
         assert_eq!(vm.output(), &[1]);
     }
 
     #[test]
     fn day05_immediate_mode_less_than() {
-        let mut memory = Memory::from(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![3, 3, 1107, -1, 8, 3, 4, 3, 99]);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[5]).run();
         assert_eq!(vm.output(), &[1]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program);
         vm.input(&[8]).run();
         assert_eq!(vm.output(), &[0]);
     }
 
     #[test]
     fn day05_position_mode_jump() {
-        let mut memory = Memory::from(vec![
+        let program = Memory::from(vec![
             3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9,
         ]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[0]).run();
         assert_eq!(vm.output(), &[0]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program);
         vm.input(&[1]).run();
         assert_eq!(vm.output(), &[1]);
     }
 
     #[test]
     fn day05_immediate_mode_jump() {
-        let mut memory = Memory::from(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
-        let mut vm = Vm::new(&mut memory);
+        let program = Memory::from(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[0]).run();
         assert_eq!(vm.output(), &[0]);
-        let mut memory = Memory::from(vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program);
         vm.input(&[1]).run();
         assert_eq!(vm.output(), &[1]);
     }
 
     #[test]
     fn day05_large_example() {
-        let mut memory = Memory::from(vec![
+        let program = Memory::from(vec![
             3, 21, 1008, 21, 8, 20, 1005, 20, 22, 107, 8, 21, 20, 1006, 20, 31, 1106, 0, 36, 98, 0,
             0, 1002, 21, 125, 20, 4, 20, 1105, 1, 46, 104, 999, 1105, 1, 46, 1101, 1000, 1, 20, 4,
             20, 1105, 1, 46, 98, 99,
         ]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[5]).run();
         assert_eq!(vm.output(), &[999]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program.clone());
         vm.input(&[8]).run();
         assert_eq!(vm.output(), &[1000]);
-        let mut vm = Vm::new(&mut memory);
+
+        let mut vm = Vm::new(program);
         vm.input(&[11]).run();
         assert_eq!(vm.output(), &[1001]);
     }
