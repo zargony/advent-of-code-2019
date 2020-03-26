@@ -1,5 +1,6 @@
 //! Advent of Code 2019: puzzle input reading
 
+use crate::intcode::{Memory, Value};
 use async_std::fs::File;
 use async_std::io::{self, BufReader};
 use async_std::path::PathBuf;
@@ -79,5 +80,11 @@ impl Input {
                     .collect(),
             )
         })
+    }
+
+    /// Intcode memory (parsed from comma separated values)
+    pub async fn memory(self) -> io::Result<Memory> {
+        let data = self.parsed_csv_lines::<Value>().try_concat().await?;
+        Ok(Memory::from(data))
     }
 }

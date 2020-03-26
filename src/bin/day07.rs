@@ -1,4 +1,5 @@
 use advent_of_code_2019::intcode::{Memory, Value, Vm};
+use advent_of_code_2019::Input;
 use async_std::prelude::*;
 use async_std::{io, stream};
 use futures_util::future;
@@ -77,7 +78,7 @@ impl AmplifierChain {
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
-    let program = Memory::from_day(7).await?;
+    let program = Input::day(7).await?.memory().await?;
 
     let (phases, thrust) = AmplifierChain::permutate_max(program, &[0, 1, 2, 3, 4])
         .await

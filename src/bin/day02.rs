@@ -1,9 +1,10 @@
-use advent_of_code_2019::intcode::{Memory, Vm};
+use advent_of_code_2019::intcode::Vm;
+use advent_of_code_2019::Input;
 use async_std::io;
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
-    let program = Memory::from_day(2).await?;
+    let program = Input::day(2).await?.memory().await?;
 
     let mut vm = Vm::new(program.clone());
     vm.noun(12).verb(2).run().await;

@@ -1,9 +1,5 @@
 //! Advent of Code 2019: Intcode memory
 
-use crate::input::Input;
-use futures_util::stream::TryStreamExt;
-use std::io;
-
 /// Intcode memory address
 pub type Address = usize;
 
@@ -31,24 +27,6 @@ impl<T: AsRef<[Value]>> PartialEq<T> for Memory {
 }
 
 impl Memory {
-    /// Load memory from puzzle input (csv) of the given day
-    pub async fn from_day(day: usize) -> io::Result<Self> {
-        let input = Input::day(day).await?;
-        Self::from_input(input).await
-    }
-
-    /// Load memory from puzzle input (csv) with the given name
-    pub async fn from_file(name: &str) -> io::Result<Self> {
-        let input = Input::open(name).await?;
-        Self::from_input(input).await
-    }
-
-    /// Load memory from given puzzle input (csv)
-    pub async fn from_input(input: Input) -> io::Result<Self> {
-        let data = input.parsed_csv_lines::<Value>().try_concat().await?;
-        Ok(Self::from(data))
-    }
-
     /// Returns the size of memory
     pub fn size(&self) -> usize {
         self.0.len()
