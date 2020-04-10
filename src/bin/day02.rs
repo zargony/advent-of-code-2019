@@ -14,7 +14,7 @@ async fn main() -> io::Result<()> {
         for verb in 0..=99 {
             let mut vm = Vm::new(program.clone());
             vm.noun(noun).verb(verb).run().await;
-            if vm.result() == 19690720 {
+            if vm.result() == 19_690_720 {
                 println!(
                     "Noun {} verb {} produces result {}",
                     noun,

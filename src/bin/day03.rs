@@ -19,7 +19,7 @@ impl Point {
     }
 
     /// Manhattan distance of point to center
-    fn distance(&self) -> i32 {
+    fn distance(self) -> i32 {
         self.x.abs() + self.y.abs()
     }
 }
@@ -112,7 +112,7 @@ impl FromStr for Path {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut last_position = Point::new(0, 0);
         let mut positions = vec![last_position];
-        for step in s.split(",") {
+        for step in s.split(',') {
             let distance = step[1..]
                 .parse::<u32>()
                 .map_err(|_e| ParsePathError::InvalidDistance(step[1..].into()))?

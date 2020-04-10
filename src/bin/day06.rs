@@ -17,7 +17,7 @@ impl OrbitMap {
     async fn load(mut lines: impl Stream<Item = io::Result<String>> + Unpin) -> io::Result<Self> {
         let mut orbits = HashMap::new();
         while let Some(line) = lines.try_next().await? {
-            let mut objects = line.split(")");
+            let mut objects = line.split(')');
             let center = objects.next().ok_or_else(|| {
                 io::Error::new(io::ErrorKind::InvalidData, "missing center object name")
             })?;
@@ -105,7 +105,7 @@ mod tests {
         let lines = [
             "COM)B", "B)C", "C)D", "D)E", "E)F", "B)G", "G)H", "D)I", "E)J", "J)K", "K)L",
         ];
-        let lines = stream::from_iter(lines.iter()).map(|l| io::Result::Ok(l.to_string()));
+        let lines = stream::from_iter(lines.iter()).map(|l| io::Result::Ok((*l).to_string()));
         let orbit_map = OrbitMap::load(lines).await.unwrap();
 
         assert_eq!(orbit_map.find_path("D", "COM"), ["D", "C", "B", "COM"]);
@@ -127,7 +127,7 @@ mod tests {
             "COM)B", "B)C", "C)D", "D)E", "E)F", "B)G", "G)H", "D)I", "E)J", "J)K", "K)L", "K)YOU",
             "I)SAN",
         ];
-        let lines = stream::from_iter(lines.iter()).map(|l| io::Result::Ok(l.to_string()));
+        let lines = stream::from_iter(lines.iter()).map(|l| io::Result::Ok((*l).to_string()));
         let orbit_map = OrbitMap::load(lines).await.unwrap();
 
         assert_eq!(

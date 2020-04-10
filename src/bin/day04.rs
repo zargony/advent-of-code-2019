@@ -9,9 +9,9 @@ struct Password([u8; 6]);
 impl From<u32> for Password {
     fn from(n: u32) -> Self {
         Password([
-            (n / 100000 % 10) as u8,
-            (n / 10000 % 10) as u8,
-            (n / 1000 % 10) as u8,
+            (n / 100_000 % 10) as u8,
+            (n / 10_000 % 10) as u8,
+            (n / 1_000 % 10) as u8,
             (n / 100 % 10) as u8,
             (n / 10 % 10) as u8,
             (n % 10) as u8,
@@ -21,9 +21,9 @@ impl From<u32> for Password {
 
 impl From<Password> for u32 {
     fn from(pwd: Password) -> Self {
-        pwd.0[0] as u32 * 100000
-            + pwd.0[1] as u32 * 10000
-            + pwd.0[2] as u32 * 1000
+        pwd.0[0] as u32 * 100_000
+            + pwd.0[1] as u32 * 10_000
+            + pwd.0[2] as u32 * 1_000
             + pwd.0[3] as u32 * 100
             + pwd.0[4] as u32 * 10
             + pwd.0[5] as u32
@@ -83,7 +83,7 @@ impl Password {
 async fn main() -> Result<(), Box<dyn error::Error>> {
     let mut lines = Input::day(4).await?.lines();
     let line = lines.try_next().await?.unwrap();
-    let mut numbers = line.split("-");
+    let mut numbers = line.split('-');
     let start = numbers.next().unwrap().parse::<u32>()?;
     let end = numbers.next().unwrap().parse::<u32>()?;
 
@@ -110,17 +110,17 @@ mod tests {
 
     #[test]
     fn part_1() {
-        let pwd = Password::from(111111);
+        let pwd = Password::from(111_111);
         assert!(pwd.has_double());
         assert!(pwd.is_increasing());
         assert!(pwd.is_valid());
 
-        let pwd = Password::from(223450);
+        let pwd = Password::from(223_450);
         assert!(pwd.has_double());
         assert!(!pwd.is_increasing());
         assert!(!pwd.is_valid());
 
-        let pwd = Password::from(123789);
+        let pwd = Password::from(123_789);
         assert!(!pwd.has_double());
         assert!(pwd.is_increasing());
         assert!(!pwd.is_valid());
@@ -128,17 +128,17 @@ mod tests {
 
     #[test]
     fn part_2() {
-        let pwd = Password::from(112233);
+        let pwd = Password::from(112_233);
         assert!(pwd.has_double_strict());
         assert!(pwd.is_increasing());
         assert!(pwd.is_valid_strict());
 
-        let pwd = Password::from(123444);
+        let pwd = Password::from(123_444);
         assert!(!pwd.has_double_strict());
         assert!(pwd.is_increasing());
         assert!(!pwd.is_valid_strict());
 
-        let pwd = Password::from(111122);
+        let pwd = Password::from(111_122);
         assert!(pwd.has_double_strict());
         assert!(pwd.is_increasing());
         assert!(pwd.is_valid_strict());
