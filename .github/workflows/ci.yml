@@ -2,21 +2,59 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  test:
-    name: Test
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          override: true
+          profile: minimal
+          components: clippy, rustfmt
+      - name: Display version information
+        run: rustup --version; cargo --version; rustc --version
+      - name: Check out repository
+        uses: actions/checkout@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all --all-targets --all-features -- -Dwarnings -Drust-2018-idioms -Adeprecated
+
+  test:
+    name: Test
+    needs: [check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
           profile: minimal
       - name: Display version information
         run: rustup --version; cargo --version; rustc --version
       - name: Check out repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Build everything
         run: cargo build --all --all-targets
       - name: Run all unit tests
         run: cargo test --all
+
+  run:
+    name: Run
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+      - name: Display version information
+        run: rustup --version; cargo --version; rustc --version
+      - name: Check out repository
+        uses: actions/checkout@v2
+      - name: Build everything
+        run: cargo build --all --all-targets --release
+      - name: Run all solutions
+        run: for f in src/bin/*.rs; do cargo run --release --bin `basename $f .rs`; done
