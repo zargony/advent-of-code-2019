@@ -53,10 +53,10 @@ impl AmplifierChain {
     }
 
     /// Stream of amplifier chain outputs for all k-permutations of the given phase values
-    fn permutate<'a>(
+    fn permutate(
         program: Memory,
-        phases: &'a [Value],
-    ) -> impl Stream<Item = (Vec<Value>, Value)> + 'a {
+        phases: &[Value],
+    ) -> impl Stream<Item = (Vec<Value>, Value)> + '_ {
         stream::from_iter(permutator::KPermutationIterator::new(phases, phases.len()))
             .map(|phases| phases.into_iter().cloned().collect::<Vec<_>>())
             .map(move |phases| (Self::new(program.clone(), &phases), phases))

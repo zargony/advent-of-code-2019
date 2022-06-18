@@ -1,8 +1,8 @@
 //! Advent of Code 2019: Intcode VM
 
 use super::memory::{Address, Memory, Value};
+use async_std::channel::{self, Sender};
 use async_std::prelude::*;
-use async_std::sync::{self, Sender};
 use std::fmt;
 
 /// Intcode parameter
@@ -30,7 +30,7 @@ impl Param {
     /// Parse parameter with the given number from memory slice of the instruction
     fn parse(mem: &[Value], n: usize) -> Self {
         debug_assert!(n < 3, "Parameter {} out of range", n);
-        let div = (10 as Value).pow(n as u32) * 100;
+        let div = (10_i32).pow(n as u32) * 100;
         match mem[0] / div % 10 {
             0 => Param::Position(mem[1 + n] as Address),
             1 => Param::Immediate(mem[1 + n]),
@@ -157,7 +157,7 @@ impl Instruction {
             }
             Instruction::Output(p1) => {
                 let tx = vm.output.as_mut().expect("No output channel set");
-                tx.send(p1.fetch(&vm.memory)).await;
+                tx.send(p1.fetch(&vm.memory)).await.unwrap();
                 vm.ip += 2;
             }
             Instruction::JumpIfNotZero(p1, p2) => {
@@ -285,7 +285,7 @@ impl Vm {
     /// Return a stream that yields output values of the vm
     pub fn output(&mut self) -> impl Stream<Item = Value> + Unpin + 'static {
         assert!(self.output.is_none(), "Output stream already set");
-        let (tx, rx) = sync::channel(1);
+        let (tx, rx) = channel::bounded(1);
         self.output = Some(tx);
         rx
     }
